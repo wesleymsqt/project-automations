@@ -90,7 +90,7 @@ async function rodarRobo() {
 
   console.log("Aplicando filtro 'Unclassified'...");
 
-  // Encontra e clica no botão de rádio "Unclassified"
+  // Encontra, clica e dispara o evento de mudança no rádio "Unclassified"
   await page.evaluate(() => {
     const radios = Array.from(document.querySelectorAll('input[type="radio"]'));
     const unclassifiedRadio = radios.find((r) =>
@@ -98,11 +98,12 @@ async function rodarRobo() {
     );
     if (unclassifiedRadio) {
       unclassifiedRadio.click();
+      unclassifiedRadio.dispatchEvent(new Event("change", { bubbles: true }));
     }
   });
 
-  // Aguarda 3 segundos para o site recarregar a tabela apenas com os pendentes
-  await new Promise((r) => setTimeout(r, 3000));
+  // Aguarda a tabela recarregar com o filtro aplicado
+  await new Promise((r) => setTimeout(r, 4000));
 
   // Conta os artigos que restaram na tabela filtrada
   const totalArtigos = await page.$$eval(
@@ -110,7 +111,7 @@ async function rodarRobo() {
     (linhas) => linhas.length,
   );
 
-  // Trava de segurança: Se a tabela esvaziou, encerra.
+  // Verifica se a tabela está vazia ou com a mensagem "No data"
   if (
     totalArtigos === 0 ||
     (totalArtigos === 1 &&
@@ -127,7 +128,11 @@ async function rodarRobo() {
 
   console.log(`Restam ${totalArtigos} artigos pendentes. Retomando triagem...`);
 
-  await page.click("table tbody tr:first-child");
+  await page.evaluate(() => {
+    const primeiraLinha = document.querySelector("table tbody tr:first-child");
+    if (primeiraLinha) primeiraLinha.click();
+  });
+
   await page.waitForSelector(".modal-dialog");
 
   let artigosProcessados = 0;
