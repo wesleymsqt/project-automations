@@ -1,11 +1,17 @@
 # Dependências do Node
 node_modules/
 
+# Variáveis de ambiente de qualquer projeto
+**/.env
+
+# Dados e arquivos locais de pesquisa
+**/artigos.csv
+
 # Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Arquivos do sistema operacional
+# Arquivos do sistema
 .DS_Store
 Thumbs.db
