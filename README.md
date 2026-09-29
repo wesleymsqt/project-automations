@@ -1,57 +1,55 @@
-# Project Automations
+# Automações de Projetos
 
-Welcome to the **Project Automations** repository! This central repository houses a collection of web automation scripts and bots designed to streamline repetitive tasks, improve productivity, and automate data processing using Node.js and various automation libraries.
+Bem-vindo ao repositório **Project Automations**! Este repositório central abriga uma coleção de scripts de automação web e bots projetados para otimizar tarefas repetitivas, aumentar a produtividade e automatizar o processamento de dados utilizando Node.js e diversas bibliotecas de automação.
 
-## Repository Structure
+<!-- ## Estrutura do Repositório
 
-To maintain organization and prevent conflicts between dependencies, each automation tool is contained within its own isolated folder. Each project has its own `package.json`, `node_modules`, and specific setup instructions.
+Para manter a organização e evitar conflitos entre dependências, cada ferramenta de automação está contida em sua própria pasta isolada. Cada projeto possui seu próprio `package.json`, `node_modules` e instruções de configuração específicas.
 
 ```text
 project-automations/
 │
-├── robo_StudySelection/    # Automation for SLR study selection in Parsifal
-├── (future projects...)    # Other bots will be added here
-├── .gitignore              # Global git ignore rules (protects all .env files)
-└── README.md               # This file
+├── robo_StudySelection/    # Automação para seleção de estudos em SLR no Parsifal
+├── (projetos futuros...)   # Outros bots serão adicionados aqui
+├── .gitignore              # Regras globais do git ignore (protege todos os arquivos .env)
+└── README.md               # Este arquivo
 ```
 
-## Current Projects
+## Projetos Atuais
 
-Here is a list of the available automation scripts in this repository:
+Aqui está uma lista dos scripts de automação disponíveis neste repositório: -->
 
-### 1. [Robo Study Selection](./robo_StudySelection)
-A Node.js and Puppeteer script built to automate the "Study Selection" phase of Systematic Literature Reviews (SLR) in the [Parsifal](https://parsif.al/) platform. It reads a local `.csv` file and automatically classifies articles as *Accepted* or *Rejected* on the web interface.
-* **Read the full documentation and setup guide here:** [robo_StudySelection/README.md](./robo_StudySelection/README.md)
+### [Robo Study Selection](./robo_StudySelection)
+Um script em Node.js e Puppeteer criado para automatizar a fase de "Seleção de Estudos" de Revisões Sistemáticas da Literatura (SLR) na plataforma [Parsifal](https://parsif.al/). Ele lê um arquivo `.csv` local e classifica automaticamente os artigos como *Aceitos* ou *Rejeitados* na interface web.
+* **Leia a documentação completa e o guia de configuração aqui:** [robo_StudySelection/README.md](./robo_StudySelection/README.md)
 
 ---
 
-## General Setup Instructions
+## Instruções Gerais de Configuração
 
-Since each project is independent, you must navigate into the specific project's folder to install its dependencies and run the scripts.
+Como cada projeto é independente, você deve navegar até a pasta do projeto específico para instalar suas dependências e executar os scripts. 1. **Clone o repositório:**
+```bash
+git clone https://github.com/wesleymsqt/project-automations.git
+cd project-automations
+```
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/wesleymsqt/project-automations.git
-   cd project-automations
-   ```
+2. **Navegue até o projeto desejado:**
+```bash
+cd robo_StudySelection
+```
 
-2. **Navigate to the desired project:**
-   ```bash
-   cd robo_StudySelection
-   ```
+3. **Instale as dependências para esse projeto específico:**
+```bash
+npm install
+```
 
-3. **Install dependencies for that specific project:**
-   ```bash
-   npm install
-   ```
+4. **Configure as variáveis ​​de ambiente:**
+Crie um arquivo `.env` dentro da pasta do projeto específico (por exemplo, `robo_StudySelection/.env`) seguindo as instruções contidas no arquivo README desse projeto.
 
-4. **Configure environment variables:**
-   Create a `.env` file inside the specific project folder (e.g., `robo_StudySelection/.env`) following the instructions in that project's README.
+## Observação sobre Segurança
 
-## Security Note
+**Nunca faça o commit de arquivos `.env`.** O arquivo `.gitignore` global na raiz deste repositório está configurado para ignorar arquivos `**/.env`, garantindo que suas senhas, chaves de API e URLs sensíveis permaneçam seguras em sua máquina local.
 
-**Never commit `.env` files.** The global `.gitignore` at the root of this repository is configured to ignore `**/.env` files, ensuring that your passwords, API keys, and sensitive URLs remain secure on your local machine.
+## Licença
 
-## License
-
-Feel free to use and adapt these scripts for your own automation needs!
+Sinta-se à vontade para usar e adaptar estes scripts para suas próprias necessidades de automação!
