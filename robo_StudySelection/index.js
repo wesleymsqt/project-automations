@@ -17,7 +17,7 @@ const padronizarTexto = (texto) => {
     .toLowerCase();
 };
 
-// Lê títulos com decisão Accepted tratando linhas iniciais vazias
+// Lê títulos com decisão Accepted
 async function carregarArtigos(caminhoCsv) {
   const titulos = new Set();
 
@@ -90,28 +90,29 @@ async function rodarRobo() {
 
   console.log("Aplicando filtro 'Unclassified'...");
 
-  // Encontra, clica e dispara o evento de mudança no rádio "Unclassified"
+  // Clica no texto (Label) do filtro para forçar a ação no Parsifal
   await page.evaluate(() => {
-    const radios = Array.from(document.querySelectorAll('input[type="radio"]'));
-    const unclassifiedRadio = radios.find((r) =>
-      r.parentNode.textContent.includes("Unclassified"),
+    const labels = Array.from(document.querySelectorAll("label"));
+    const labelUnclassified = labels.find(
+      (l) => l.innerText.trim() === "Unclassified",
     );
-    if (unclassifiedRadio) {
-      unclassifiedRadio.click();
-      unclassifiedRadio.dispatchEvent(new Event("change", { bubbles: true }));
+    if (labelUnclassified) {
+      labelUnclassified.click();
     }
   });
 
   // Aguarda a tabela recarregar com o filtro aplicado
   await new Promise((r) => setTimeout(r, 4000));
 
-  // Conta os artigos que restaram na tabela filtrada
+  // Conta apenas os artigos que estão visíveis na tela (ignora os ocultos por CSS)
   const totalArtigos = await page.$$eval(
     "table tbody tr",
-    (linhas) => linhas.length,
+    (linhas) =>
+      linhas.filter(
+        (l) => l.style.display !== "none" && !l.classList.contains("hidden"),
+      ).length,
   );
 
-  // Verifica se a tabela está vazia ou com a mensagem "No data"
   if (
     totalArtigos === 0 ||
     (totalArtigos === 1 &&
@@ -119,9 +120,7 @@ async function rodarRobo() {
         el.innerText.includes("No data"),
       )))
   ) {
-    console.log(
-      "Nenhum artigo pendente (Unclassified) encontrado. Todos já foram classificados!",
-    );
+    console.log("Nenhum artigo pendente encontrado. Automação finalizada!");
     await browser.close();
     return;
   }
@@ -136,8 +135,9 @@ async function rodarRobo() {
   await page.waitForSelector(".modal-dialog");
 
   let artigosProcessados = 0;
+  const artigosVisitados = new Set();
 
-  while (artigosProcessados < totalArtigos) {
+  while (true) {
     artigosProcessados++;
 
     let elementoTitulo = await page
@@ -145,9 +145,7 @@ async function rodarRobo() {
       .catch(() => null);
 
     if (!elementoTitulo) {
-      console.log(
-        `[${artigosProcessados}/${totalArtigos}] Lentidão no Parsifal detectada. Aguardando mais 15s...`,
-      );
+      console.log(`Lentidão no Parsifal detectada. Aguardando mais 15s...`);
       elementoTitulo = await page
         .waitForSelector('input[name="title"]', { timeout: 15000 })
         .catch(() => null);
@@ -155,7 +153,7 @@ async function rodarRobo() {
 
     if (!elementoTitulo) {
       console.log(
-        `[${artigosProcessados}/${totalArtigos}] Erro crítico de carregamento. Pulando artigo para evitar travamento.`,
+        `Erro crítico de carregamento. Pulando artigo para evitar travamento.`,
       );
       await page.evaluate(() => {
         const botoes = Array.from(document.querySelectorAll("button"));
@@ -170,6 +168,16 @@ async function rodarRobo() {
 
     const tituloBruto = await page.evaluate((el) => el.value, elementoTitulo);
     const tituloAtual = padronizarTexto(tituloBruto);
+
+    // TRAVA ANTI-LOOP: Verifica se o robô voltou ao início da lista
+    if (artigosVisitados.has(tituloAtual)) {
+      console.log(
+        "\n[!] Loop detectado: O Parsifal voltou ao início da lista.",
+      );
+      console.log("Todos os artigos pendentes foram classificados!");
+      break;
+    }
+    artigosVisitados.add(tituloAtual);
 
     let statusDesejado = titulosAceitos.has(tituloAtual)
       ? "Accepted"
@@ -201,10 +209,6 @@ async function rodarRobo() {
     });
 
     await new Promise((r) => setTimeout(r, 2000));
-
-    if (artigosProcessados >= totalArtigos) {
-      break;
-    }
 
     let clicouNext = false;
     for (let i = 0; i < 3; i++) {
