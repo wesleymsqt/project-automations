@@ -118,14 +118,40 @@ async function rodarRobo() {
   while (artigosProcessados < totalArtigos) {
     artigosProcessados++;
 
-    await page
-      .waitForSelector('input[name="title"]', { timeout: 5000 })
-      .catch(() => {});
+    // Aguarda o campo de título com resiliência a lentidão (15s)
+    let elementoTitulo = await page
+      .waitForSelector('input[name="title"]', { timeout: 15000 })
+      .catch(() => null);
 
-    const tituloBruto = await page.$eval(
-      'input[name="title"]',
-      (el) => el.value,
-    );
+    // Segunda tentativa em caso de lentidão extrema
+    if (!elementoTitulo) {
+      console.log(
+        `[${artigosProcessados}/${totalArtigos}] Lentidão no Parsifal detectada. Aguardando mais 15s...`,
+      );
+      elementoTitulo = await page
+        .waitForSelector('input[name="title"]', { timeout: 15000 })
+        .catch(() => null);
+    }
+
+    // Escape de segurança se o artigo não carregar de jeito nenhum
+    if (!elementoTitulo) {
+      console.log(
+        `[${artigosProcessados}/${totalArtigos}] Erro crítico de carregamento. Pulando artigo para evitar travamento.`,
+      );
+
+      // Força o clique no "Next" para desbugar o modal
+      await page.evaluate(() => {
+        const botoes = Array.from(document.querySelectorAll("button"));
+        const btnNext = botoes.find(
+          (b) => b.innerText.trim() === "Next" && !b.disabled,
+        );
+        if (btnNext) btnNext.click();
+      });
+      await new Promise((r) => setTimeout(r, 2000));
+      continue; // Pula para a próxima iteração do loop sem quebrar o robô
+    }
+
+    const tituloBruto = await page.evaluate((el) => el.value, elementoTitulo);
     const tituloAtual = padronizarTexto(tituloBruto);
 
     // Lê status atual
