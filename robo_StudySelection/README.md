@@ -8,7 +8,7 @@ O robô lê uma lista de artigos previamente avaliados a partir de um arquivo de
 
 - **Login Automatizado:** Acessa o Parsifal de forma autônoma utilizando credenciais seguras via variáveis de ambiente.
 - **Leitura Resiliente:** Processa a lista de artigos aceitos ignorando pontuações, acentos e caracteres especiais para evitar falsos negativos na comparação de títulos.
-- **Classificação Inteligente:** 
+- **Classificação Inteligente:**
   - Aceita (`Accepted`) artigos presentes na lista de aprovação.
   - Rejeita (`Rejected`) artigos que não constam na lista.
   - Pula artigos que já foram classificados anteriormente (economizando tempo e evitando retrabalho).
@@ -29,31 +29,29 @@ O robô lê uma lista de artigos previamente avaliados a partir de um arquivo de
 ## Instalação e Configuração
 
 1. Clone o repositório ou acesse a pasta do projeto no seu terminal:
+
    ```bash
    cd robo_StudySelection
    ```
 
 2. Instale as dependências necessárias:
+
    ```bash
    npm install
    ```
 
 3. Na raiz da pasta `robo_StudySelection`, crie um arquivo chamado **`.env`** e insira as suas credenciais e a URL do seu projeto. **Atenção:** Não utilize aspas.
+
    ```env
    EMAIL=seu_email@exemplo.com
    SENHA=sua_senha_do_parsifal
    URL_PROJETO=https://parsif.al/seu_usuario/seu-projeto/conducting/studies/
    ```
 
-4. Na mesma pasta, crie um arquivo chamado **`artigos_aceitos.csv`**. 
-   - A primeira linha deve ser o cabeçalho (ex: `Título Original`).
-   - Cole os títulos dos artigos que devem ser marcados como **Accepted**, um por linha.
-   - O formato deve ser texto puro. Exemplo:
-     ```text
-     Título Original
-     Nome do primeiro artigo a ser aceito
-     Nome do segundo artigo a ser aceito
-     ```
+4. Na mesma pasta, mantenha o arquivo **`artigos.csv`** exportado com as colunas
+   `Título Original` e `Sugestão de Decisão`.
+   - Artigos cuja `Sugestão de Decisão` seja **`Accepted`** serão aceitos.
+   - Os demais artigos serão classificados como **`Rejected`**.
 
 ## Como Executar
 
@@ -68,4 +66,5 @@ O robô abrirá uma janela do navegador, realizará o login e começará a triag
 **Aviso:** Não clique ou interaja com a janela do navegador aberto pelo robô enquanto a automação estiver em andamento, pois isso pode interromper o fluxo de cliques automáticos.
 
 ## Segurança
+
 As senhas e informações sensíveis são gerenciadas pelo arquivo `.env`, que está listado no `.gitignore` e **nunca** deve ser enviado para repositórios públicos no GitHub.

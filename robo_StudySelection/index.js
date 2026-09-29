@@ -1,6 +1,9 @@
 require("dotenv").config();
 const puppeteer = require("puppeteer");
 const fs = require("fs");
+const path = require("path");
+const { Readable } = require("stream");
+const csv = require("csv-parser");
 
 // Padroniza removendo acentos e pontuações
 const padronizarTexto = (texto) => {
@@ -14,24 +17,53 @@ const padronizarTexto = (texto) => {
     .toLowerCase();
 };
 
-// Lê o arquivo ignorando o cabeçalho
+// Lê títulos com decisão Accepted tratando linhas iniciais vazias
 async function carregarArtigos(caminhoCsv) {
   const titulos = new Set();
-  const conteudo = fs.readFileSync(caminhoCsv, "utf8");
-  const linhas = conteudo.split(/\r?\n/);
 
-  for (let i = 1; i < linhas.length; i++) {
-    const linha = linhas[i].trim();
-    if (linha) {
-      titulos.add(padronizarTexto(linha));
-    }
-  }
-  return titulos;
+  // Lê o arquivo todo como texto
+  let conteudo = fs.readFileSync(caminhoCsv, "utf8");
+
+  // Remove linhas vazias ou apenas com vírgulas no início do arquivo
+  conteudo = conteudo.replace(/^([,\s]*\r?\n)+/, "");
+
+  return new Promise((resolve, reject) => {
+    // Cria stream a partir do texto limpo
+    Readable.from(conteudo)
+      .pipe(
+        csv({
+          // Limpa caracteres invisíveis (BOM) dos cabeçalhos
+          mapHeaders: ({ header }) => header.trim().replace(/^\uFEFF/, ""),
+        }),
+      )
+      .on("data", (artigo) => {
+        const tituloBruto = artigo["Título Original"];
+        const decisaoBruto = artigo["Sugestão de Decisão"];
+
+        // Valida se as colunas existem na linha
+        if (tituloBruto && decisaoBruto) {
+          const titulo = padronizarTexto(tituloBruto);
+          const decisao = padronizarTexto(decisaoBruto);
+
+          if (decisao === "accepted") {
+            titulos.add(titulo);
+          }
+        }
+      })
+      .on("end", () => resolve(titulos))
+      .on("error", reject);
+  });
 }
 
 async function rodarRobo() {
   console.log("Lendo arquivo de artigos...");
-  const titulosAceitos = await carregarArtigos("artigos_aceitos.csv");
+  const titulosAceitos = await carregarArtigos(
+    path.join(__dirname, "artigos.csv"),
+  );
+
+  console.log(
+    `Artigos com status 'Accepted' carregados na memória: ${titulosAceitos.size}`,
+  );
 
   // Inicia navegador Edge
   const browser = await puppeteer.launch({
@@ -45,18 +77,17 @@ async function rodarRobo() {
   console.log("Fazendo login...");
   await page.goto("https://parsif.al/login/");
 
-  // Usa as variáveis do arquivo .env
+  // Preenche credenciais do .env
   await page.type("#id_username", process.env.EMAIL);
   await page.type("#id_password", process.env.SENHA);
 
-  // Clica e espera navegação
+  // Aguarda login
   await Promise.all([
     page.waitForNavigation({ timeout: 15000 }).catch(() => {}),
     page.click('button[type="submit"]'),
   ]);
 
   console.log("Acessando seleção de estudos...");
-  // Usa a URL do arquivo .env
   await page.goto(process.env.URL_PROJETO);
 
   console.log("Aguardando a lista de artigos carregar...");
@@ -68,7 +99,7 @@ async function rodarRobo() {
     return;
   }
 
-  // Conta total de artigos
+  // Conta total de linhas na tabela
   const totalArtigos = await page.$$eval(
     "table tbody tr",
     (linhas) => linhas.length,
@@ -77,13 +108,13 @@ async function rodarRobo() {
     `Foram encontrados ${totalArtigos} artigos. Iniciando triagem...`,
   );
 
-  // Abre o modal
+  // Abre modal do primeiro artigo
   await page.click("table tbody tr:first-child");
   await page.waitForSelector(".modal-dialog");
 
   let artigosProcessados = 0;
 
-  // Loop de processamento
+  // Loop de triagem
   while (artigosProcessados < totalArtigos) {
     artigosProcessados++;
 
@@ -97,7 +128,7 @@ async function rodarRobo() {
     );
     const tituloAtual = padronizarTexto(tituloBruto);
 
-    // Verifica status atual
+    // Lê status atual
     const statusAtual = await page.evaluate(() => {
       const select = document.querySelector('select[name="status"]');
       return select ? select.options[select.selectedIndex].text.trim() : "";
@@ -111,6 +142,7 @@ async function rodarRobo() {
       let statusDesejado = titulosAceitos.has(tituloAtual)
         ? "Accepted"
         : "Rejected";
+
       console.log(
         `[${artigosProcessados}/${totalArtigos}] ${statusDesejado === "Accepted" ? "Aceitando" : "Recusando"}: ${tituloBruto}`,
       );
@@ -133,7 +165,7 @@ async function rodarRobo() {
 
       await new Promise((r) => setTimeout(r, 800));
 
-      // Clica em Save
+      // Salva alteração
       await page.evaluate(() => {
         const botoes = Array.from(document.querySelectorAll("button"));
         const btnSave = botoes.find((b) => b.innerText.trim() === "Save");
@@ -147,7 +179,7 @@ async function rodarRobo() {
       break;
     }
 
-    // Tenta clicar no botão Next até 3 vezes
+    // Avança para o próximo artigo
     let clicouNext = false;
     for (let i = 0; i < 3; i++) {
       clicouNext = await page.evaluate(() => {
