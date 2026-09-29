@@ -21,18 +21,13 @@ const padronizarTexto = (texto) => {
 async function carregarArtigos(caminhoCsv) {
   const titulos = new Set();
 
-  // Lê o arquivo todo como texto
   let conteudo = fs.readFileSync(caminhoCsv, "utf8");
-
-  // Remove linhas vazias ou apenas com vírgulas no início do arquivo
   conteudo = conteudo.replace(/^([,\s]*\r?\n)+/, "");
 
   return new Promise((resolve, reject) => {
-    // Cria stream a partir do texto limpo
     Readable.from(conteudo)
       .pipe(
         csv({
-          // Limpa caracteres invisíveis (BOM) dos cabeçalhos
           mapHeaders: ({ header }) => header.trim().replace(/^\uFEFF/, ""),
         }),
       )
@@ -40,7 +35,6 @@ async function carregarArtigos(caminhoCsv) {
         const tituloBruto = artigo["Título Original"];
         const decisaoBruto = artigo["Sugestão de Decisão"];
 
-        // Valida se as colunas existem na linha
         if (tituloBruto && decisaoBruto) {
           const titulo = padronizarTexto(tituloBruto);
           const decisao = padronizarTexto(decisaoBruto);
@@ -61,11 +55,8 @@ async function rodarRobo() {
     path.join(__dirname, "artigos.csv"),
   );
 
-  console.log(
-    `Artigos com status 'Accepted' carregados na memória: ${titulosAceitos.size}`,
-  );
+  console.log(`Artigos 'Accepted' em memória: ${titulosAceitos.size}`);
 
-  // Inicia navegador Edge
   const browser = await puppeteer.launch({
     headless: false,
     defaultViewport: null,
@@ -77,11 +68,9 @@ async function rodarRobo() {
   console.log("Fazendo login...");
   await page.goto("https://parsif.al/login/");
 
-  // Preenche credenciais do .env
   await page.type("#id_username", process.env.EMAIL);
   await page.type("#id_password", process.env.SENHA);
 
-  // Aguarda login
   await Promise.all([
     page.waitForNavigation({ timeout: 15000 }).catch(() => {}),
     page.click('button[type="submit"]'),
@@ -99,31 +88,57 @@ async function rodarRobo() {
     return;
   }
 
-  // Conta total de linhas na tabela
+  console.log("Aplicando filtro 'Unclassified'...");
+
+  // Encontra e clica no botão de rádio "Unclassified"
+  await page.evaluate(() => {
+    const radios = Array.from(document.querySelectorAll('input[type="radio"]'));
+    const unclassifiedRadio = radios.find((r) =>
+      r.parentNode.textContent.includes("Unclassified"),
+    );
+    if (unclassifiedRadio) {
+      unclassifiedRadio.click();
+    }
+  });
+
+  // Aguarda 3 segundos para o site recarregar a tabela apenas com os pendentes
+  await new Promise((r) => setTimeout(r, 3000));
+
+  // Conta os artigos que restaram na tabela filtrada
   const totalArtigos = await page.$$eval(
     "table tbody tr",
     (linhas) => linhas.length,
   );
-  console.log(
-    `Foram encontrados ${totalArtigos} artigos. Iniciando triagem...`,
-  );
 
-  // Abre modal do primeiro artigo
+  // Trava de segurança: Se a tabela esvaziou, encerra.
+  if (
+    totalArtigos === 0 ||
+    (totalArtigos === 1 &&
+      (await page.$eval("table tbody tr", (el) =>
+        el.innerText.includes("No data"),
+      )))
+  ) {
+    console.log(
+      "Nenhum artigo pendente (Unclassified) encontrado. Todos já foram classificados!",
+    );
+    await browser.close();
+    return;
+  }
+
+  console.log(`Restam ${totalArtigos} artigos pendentes. Retomando triagem...`);
+
   await page.click("table tbody tr:first-child");
   await page.waitForSelector(".modal-dialog");
 
   let artigosProcessados = 0;
 
-  // Loop de triagem
   while (artigosProcessados < totalArtigos) {
     artigosProcessados++;
 
-    // Aguarda o campo de título com resiliência a lentidão (15s)
     let elementoTitulo = await page
       .waitForSelector('input[name="title"]', { timeout: 15000 })
       .catch(() => null);
 
-    // Segunda tentativa em caso de lentidão extrema
     if (!elementoTitulo) {
       console.log(
         `[${artigosProcessados}/${totalArtigos}] Lentidão no Parsifal detectada. Aguardando mais 15s...`,
@@ -133,13 +148,10 @@ async function rodarRobo() {
         .catch(() => null);
     }
 
-    // Escape de segurança se o artigo não carregar de jeito nenhum
     if (!elementoTitulo) {
       console.log(
         `[${artigosProcessados}/${totalArtigos}] Erro crítico de carregamento. Pulando artigo para evitar travamento.`,
       );
-
-      // Força o clique no "Next" para desbugar o modal
       await page.evaluate(() => {
         const botoes = Array.from(document.querySelectorAll("button"));
         const btnNext = botoes.find(
@@ -148,64 +160,47 @@ async function rodarRobo() {
         if (btnNext) btnNext.click();
       });
       await new Promise((r) => setTimeout(r, 2000));
-      continue; // Pula para a próxima iteração do loop sem quebrar o robô
+      continue;
     }
 
     const tituloBruto = await page.evaluate((el) => el.value, elementoTitulo);
     const tituloAtual = padronizarTexto(tituloBruto);
 
-    // Lê status atual
-    const statusAtual = await page.evaluate(() => {
-      const select = document.querySelector('select[name="status"]');
-      return select ? select.options[select.selectedIndex].text.trim() : "";
-    });
+    let statusDesejado = titulosAceitos.has(tituloAtual)
+      ? "Accepted"
+      : "Rejected";
 
-    if (statusAtual !== "Unclassified") {
-      console.log(
-        `[${artigosProcessados}/${totalArtigos}] Pulando (já é ${statusAtual}): ${tituloBruto}`,
-      );
-    } else {
-      let statusDesejado = titulosAceitos.has(tituloAtual)
-        ? "Accepted"
-        : "Rejected";
+    console.log(
+      `[${artigosProcessados}/${totalArtigos}] ${statusDesejado === "Accepted" ? "Aceitando" : "Recusando"}: ${tituloBruto}`,
+    );
 
-      console.log(
-        `[${artigosProcessados}/${totalArtigos}] ${statusDesejado === "Accepted" ? "Aceitando" : "Recusando"}: ${tituloBruto}`,
-      );
-
-      // Altera dropdown
-      await page.evaluate((statusNome) => {
-        const statusSelect = document.querySelector('select[name="status"]');
-        if (statusSelect) {
-          for (let i = 0; i < statusSelect.options.length; i++) {
-            if (statusSelect.options[i].text.includes(statusNome)) {
-              statusSelect.value = statusSelect.options[i].value;
-              statusSelect.dispatchEvent(
-                new Event("change", { bubbles: true }),
-              );
-              break;
-            }
+    await page.evaluate((statusNome) => {
+      const statusSelect = document.querySelector('select[name="status"]');
+      if (statusSelect) {
+        for (let i = 0; i < statusSelect.options.length; i++) {
+          if (statusSelect.options[i].text.includes(statusNome)) {
+            statusSelect.value = statusSelect.options[i].value;
+            statusSelect.dispatchEvent(new Event("change", { bubbles: true }));
+            break;
           }
         }
-      }, statusDesejado);
+      }
+    }, statusDesejado);
 
-      await new Promise((r) => setTimeout(r, 800));
+    await new Promise((r) => setTimeout(r, 800));
 
-      // Salva alteração
-      await page.evaluate(() => {
-        const botoes = Array.from(document.querySelectorAll("button"));
-        const btnSave = botoes.find((b) => b.innerText.trim() === "Save");
-        if (btnSave) btnSave.click();
-      });
+    await page.evaluate(() => {
+      const botoes = Array.from(document.querySelectorAll("button"));
+      const btnSave = botoes.find((b) => b.innerText.trim() === "Save");
+      if (btnSave) btnSave.click();
+    });
 
-      await new Promise((r) => setTimeout(r, 2000));
-    }
+    await new Promise((r) => setTimeout(r, 2000));
 
     if (artigosProcessados >= totalArtigos) {
       break;
     }
 
-    // Avança para o próximo artigo
     let clicouNext = false;
     for (let i = 0; i < 3; i++) {
       clicouNext = await page.evaluate(() => {
