@@ -65,6 +65,17 @@ O robô abrirá uma janela do navegador, realizará o login e começará a triag
 
 **Aviso:** Não clique ou interaja com a janela do navegador aberto pelo robô enquanto a automação estiver em andamento, pois isso pode interromper o fluxo de cliques automáticos.
 
+# Auditoria de Resultados
+Para verificar se a classificação final no Parsifal corresponde exatamente ao que foi definido no seu arquivo CSV, execute o script de conferência:
+
+```bash
+node auditoria.js
+```
+
+Este script fará a leitura apenas dos artigos marcados como "Accepted" na plataforma e cruzará os dados com o arquivo local. Ao final, ele exibirá um relatório indicando sucesso absoluto ou listando os títulos que estão faltando ou sobrando no sistema.
+
+Aviso: Durante a execução de qualquer um dos scripts, não clique ou interaja manualmente com a janela do navegador aberta pelo robô, pois isso pode interromper o fluxo de cliques automáticos.
+
 ## Segurança
 
 As senhas e informações sensíveis são gerenciadas pelo arquivo `.env`, que está listado no `.gitignore` e **nunca** deve ser enviado para repositórios públicos no GitHub.
