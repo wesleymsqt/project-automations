@@ -58,3 +58,29 @@ O repositório é composto por três scripts principais, adequados para diferent
    - Para o script `selecaoStatus.js`: Pode conter todos os artigos com as colunas `Título Original` e `Sugestão de Decisão`.
    - Para o script `selecaoCheckbox.js`: Deve conter **exclusivamente** os artigos que serão aceitos.
 
+## Como Executar
+
+Com todas as configurações feitas, execute o comando correspondente à automação desejada no terminal (certifique-se de estar dentro da pasta `robo_StudySelection`):
+
+### 1. Classificação Individual (Lenta)
+```bash
+node selecaoStatus.js
+```
+
+### 2. Classificação via Checkbox em Lote (Rápida)
+```bash
+node selecaoCheckbox.js
+```
+*Lembre-se: Após a execução deste script, vá até a janela do navegador que permanecerá aberta, clique no menu "Action", escolha "Mark as accepted" e clique em "Go".*
+
+### 3. Auditoria de Resultados
+Para verificar se a classificação final no Parsifal corresponde exatamente ao que foi definido no seu arquivo CSV, execute:
+```bash
+node auditoria.js
+```
+
+**Aviso Geral:** Durante a execução de qualquer um dos scripts, não clique ou interaja manualmente com a janela do navegador aberta pelo robô (exceto na finalização do `selecaoCheckbox`), pois isso pode interromper o fluxo de cliques automáticos.
+
+## Segurança
+
+As senhas e informações sensíveis são gerenciadas pelo arquivo `.env`, que está devidamente configurado no `.gitignore` e **nunca** deve ser enviado para repositórios públicos no GitHub.
