@@ -32,3 +32,29 @@ O repositório é composto por três scripts principais, adequados para diferent
 2. Navegador **Microsoft Edge** instalado (o caminho padrão utilizado no script é `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`).
 3. Uma conta ativa no Parsifal com um projeto de revisão criado e artigos importados.
 
+## Instalação e Configuração
+
+1. Clone o repositório ou acesse a pasta do projeto no seu terminal:
+
+   ```bash
+   cd robo_StudySelection
+   ```
+
+2. Instale as dependências necessárias:
+
+   ```bash
+   npm install
+   ```
+
+3. Na raiz da pasta `robo_StudySelection`, crie um arquivo chamado **`.env`** (você pode usar o `.env.example` como base) e insira as suas credenciais e a URL do seu projeto. **Atenção:** Não utilize aspas.
+
+   ```env
+   EMAIL=seu_email@exemplo.com
+   SENHA=sua_senha_do_parsifal
+   URL_PROJETO=https://parsif.al/seu_usuario/seu-projeto/conducting/studies/
+   ```
+
+4. Prepare o seu arquivo **`artigos.csv`** na mesma pasta.
+   - Para o script `selecaoStatus.js`: Pode conter todos os artigos com as colunas `Título Original` e `Sugestão de Decisão`.
+   - Para o script `selecaoCheckbox.js`: Deve conter **exclusivamente** os artigos que serão aceitos.
+
