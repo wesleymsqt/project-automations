@@ -5,7 +5,7 @@ const path = require("path");
 const { Readable } = require("stream");
 const csv = require("csv-parser");
 
-// Padroniza os textos para comparação exata
+// Remove acentos, caracteres especiais e espaços
 const padronizarTexto = (texto) => {
   if (!texto) return "";
   return texto
@@ -17,11 +17,16 @@ const padronizarTexto = (texto) => {
     .toLowerCase();
 };
 
-// Lê títulos com decisão Accepted do CSV local
-async function carregarArtigosCSV(caminhoCsv) {
+// Lê CSV e extrai Título Original
+async function carregarArtigos(caminhoCsv) {
   const titulos = new Set();
   let conteudo = fs.readFileSync(caminhoCsv, "utf8");
-  conteudo = conteudo.replace(/^([,\s]*\r?\n)+/, "");
+
+  const linhas = conteudo.split(/\r?\n/);
+  if (linhas.length > 0 && linhas[0].includes("ARTIGOS ACEITOS")) {
+    linhas.shift();
+  }
+  conteudo = linhas.join("\n");
 
   return new Promise((resolve, reject) => {
     Readable.from(conteudo)
@@ -32,28 +37,22 @@ async function carregarArtigosCSV(caminhoCsv) {
       )
       .on("data", (artigo) => {
         const tituloBruto = artigo["Título Original"];
-        const decisaoBruto = artigo["Sugestão de Decisão"];
-
-        if (tituloBruto && decisaoBruto) {
-          const titulo = padronizarTexto(tituloBruto);
-          const decisao = padronizarTexto(decisaoBruto);
-          if (decisao === "accepted") {
-            titulos.add(titulo);
-          }
+        if (tituloBruto) {
+          titulos.add(padronizarTexto(tituloBruto));
         }
       })
-      .on("end", () => resolve(titulos))
+      .on("end", () => resolve(Array.from(titulos)))
       .on("error", reject);
   });
 }
 
-async function rodarAuditoria() {
-  console.log("Lendo arquivo CSV local...");
-  const csvTitulos = await carregarArtigosCSV(
-    path.join(__dirname, "artigos.csv"),
-  );
-  console.log(`Total de 'Accepted' no CSV: ${csvTitulos.size}`);
+// Automação principal
+async function verificarArtigos() {
+  console.log("Lendo arquivo de artigos...");
+  const titulosCsv = await carregarArtigos(path.join(__dirname, "artigos.csv"));
+  console.log(`Artigos carregados do CSV: ${titulosCsv.length}`);
 
+  // Inicia navegador
   const browser = await puppeteer.launch({
     headless: false,
     defaultViewport: null,
@@ -62,10 +61,13 @@ async function rodarAuditoria() {
   });
   const page = await browser.newPage();
 
-  console.log("Fazendo login no Parsifal...");
+  console.log("Fazendo login...");
   await page.goto("https://parsif.al/login/");
+
+  // Preenche credenciais
   await page.type("#id_username", process.env.EMAIL);
   await page.type("#id_password", process.env.SENHA);
+
   await Promise.all([
     page.waitForNavigation({ timeout: 15000 }).catch(() => {}),
     page.click('button[type="submit"]'),
@@ -74,6 +76,7 @@ async function rodarAuditoria() {
   console.log("Acessando seleção de estudos...");
   await page.goto(process.env.URL_PROJETO);
 
+  // Aguarda carregamento inicial
   try {
     await page.waitForSelector("table tbody tr", { timeout: 10000 });
   } catch (error) {
@@ -89,139 +92,87 @@ async function rodarAuditoria() {
     if (labelAccepted) labelAccepted.click();
   });
 
-  // Aguarda tabela recarregar com os aceitos
   await new Promise((r) => setTimeout(r, 4000));
 
-  const totalArtigos = await page.$$eval(
-    "table tbody tr",
-    (linhas) =>
-      linhas.filter(
-        (l) => l.style.display !== "none" && !l.classList.contains("hidden"),
-      ).length,
-  );
+  console.log("Rolando a página para carregar todos os artigos...");
+  // Scroll automático
+  await page.evaluate(async () => {
+    await new Promise((resolve) => {
+      let totalHeight = 0;
+      const distance = 800;
+      const timer = setInterval(() => {
+        const scrollHeight = document.body.scrollHeight;
+        window.scrollBy(0, distance);
+        totalHeight += distance;
 
-  if (
-    totalArtigos === 0 ||
-    (totalArtigos === 1 &&
-      (await page.$eval("table tbody tr", (el) =>
-        el.innerText.includes("No data"),
-      )))
-  ) {
-    console.log("Nenhum artigo 'Accepted' encontrado no Parsifal.");
-    await browser.close();
-    return;
-  }
-
-  console.log(`Coletando ${totalArtigos} artigos no Parsifal. Aguarde...`);
-
-  await page.evaluate(() => {
-    const primeiraLinha = document.querySelector("table tbody tr:first-child");
-    if (primeiraLinha) primeiraLinha.click();
-  });
-  await page.waitForSelector(".modal-dialog");
-
-  const parsifalTitulos = new Set();
-  const titulosOriginais = {}; // Guarda o título original para exibir no log final
-
-  let artigosLidos = 0;
-
-  while (true) {
-    artigosLidos++;
-
-    let elementoTitulo = await page
-      .waitForSelector('input[name="title"]', { timeout: 10000 })
-      .catch(() => null);
-
-    if (!elementoTitulo) {
-      console.log("Tentando recarregar o artigo...");
-      elementoTitulo = await page
-        .waitForSelector('input[name="title"]', { timeout: 15000 })
-        .catch(() => null);
-    }
-
-    if (!elementoTitulo) {
-      console.log(`Erro ao ler artigo. Pulando...`);
-      await page.evaluate(() => {
-        const botoes = Array.from(document.querySelectorAll("button"));
-        const btnNext = botoes.find(
-          (b) => b.innerText.trim() === "Next" && !b.disabled,
-        );
-        if (btnNext) btnNext.click();
-      });
-      await new Promise((r) => setTimeout(r, 2000));
-      continue;
-    }
-
-    const tituloBruto = await page.evaluate((el) => el.value, elementoTitulo);
-    const tituloPadronizado = padronizarTexto(tituloBruto);
-
-    // Trava de loop do Parsifal
-    if (parsifalTitulos.has(tituloPadronizado)) {
-      break;
-    }
-
-    parsifalTitulos.add(tituloPadronizado);
-    titulosOriginais[tituloPadronizado] = tituloBruto;
-
-    // Clica em Next sem salvar nada
-    let clicouNext = false;
-    for (let i = 0; i < 3; i++) {
-      clicouNext = await page.evaluate(() => {
-        const botoes = Array.from(document.querySelectorAll("button"));
-        const btnNext = botoes.find(
-          (b) => b.innerText.trim() === "Next" && !b.disabled,
-        );
-        if (btnNext) {
-          btnNext.click();
-          return true;
+        if (totalHeight >= scrollHeight - window.innerHeight) {
+          clearInterval(timer);
+          resolve();
         }
-        return false;
-      });
+      }, 300);
+    });
+  });
 
-      if (clicouNext) break;
-      await new Promise((r) => setTimeout(r, 1000));
-    }
+  await new Promise((r) => setTimeout(r, 2000));
 
-    await new Promise((r) => setTimeout(r, 1000));
-  }
+  console.log("Extraindo títulos do Parsifal...");
 
+  // Captura todos os títulos aceitos listados na tabela
+  const titulosParsifal = await page.evaluate(() => {
+    const padronizar = (t) => {
+      if (!t) return "";
+      return t
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-zA-Z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+    };
+
+    const linhas = document.querySelectorAll("table tbody tr");
+    const encontrados = [];
+
+    linhas.forEach((linha) => {
+      if (linha.style.display === "none" || linha.classList.contains("hidden"))
+        return;
+
+      const colunas = linha.querySelectorAll("td");
+      if (colunas.length < 3) return;
+
+      // 3ª coluna tem o título original
+      const titulo = colunas[2].innerText;
+      if (titulo) encontrados.push(padronizar(titulo));
+    });
+
+    return encontrados;
+  });
+
+  // Fecha navegador após extração
   await browser.close();
 
-  console.log("\n=== RESULTADO DA AUDITORIA ===");
+  // Compara as listas
+  console.log("Comparando dados...\n");
 
-  // Cruzamento de dados
-  const faltandoNoParsifal = [...csvTitulos].filter(
-    (t) => !parsifalTitulos.has(t),
-  );
-  const extrasNoParsifal = [...parsifalTitulos].filter(
-    (t) => !csvTitulos.has(t),
+  const faltantesNoParsifal = titulosCsv.filter(
+    (tituloCsv) => !titulosParsifal.includes(tituloCsv),
   );
 
-  if (faltandoNoParsifal.length === 0 && extrasNoParsifal.length === 0) {
-    console.log(
-      "Sucesso Absoluto! Todos os artigos do CSV estão iguais no Parsifal.",
-    );
+  // Relatório Final
+  console.log("=== RELATÓRIO DE VERIFICAÇÃO ===");
+  console.log(`Total de artigos no CSV: ${titulosCsv.length}`);
+  console.log(
+    `Total de artigos 'Accepted' no Parsifal: ${titulosParsifal.length}`,
+  );
+  console.log(
+    `\nArtigos no CSV que NÃO estão marcados como Accepted no Parsifal (${faltantesNoParsifal.length}):`,
+  );
+
+  if (faltantesNoParsifal.length > 0) {
+    faltantesNoParsifal.forEach((t, i) => console.log(`${i + 1}. ${t}`));
   } else {
-    if (faltandoNoParsifal.length > 0) {
-      console.log(
-        `\n FALTANDO NO PARSIFAL (${faltandoNoParsifal.length} artigos):`,
-      );
-      console.log(
-        "Estes artigos estão como 'Accepted' no CSV, mas NÃO no Parsifal.",
-      );
-      faltandoNoParsifal.forEach((t) => console.log(` - ${t}`));
-    }
-
-    if (extrasNoParsifal.length > 0) {
-      console.log(
-        `\n EXTRA NO PARSIFAL (${extrasNoParsifal.length} artigos):`,
-      );
-      console.log(
-        "Estes artigos estão 'Accepted' no Parsifal, mas NÃO constam no CSV.",
-      );
-      extrasNoParsifal.forEach((t) => console.log(` - ${titulosOriginais[t]}`));
-    }
+    console.log("Todos os artigos do CSV constam como Accepted no Parsifal!");
   }
 }
 
-rodarAuditoria();
+verificarArtigos();
