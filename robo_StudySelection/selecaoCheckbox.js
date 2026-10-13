@@ -5,6 +5,7 @@ const path = require("path");
 const { Readable } = require("stream");
 const csv = require("csv-parser");
 
+// Remove acentos, caracteres especiais e espaços extras para facilitar comparação
 const padronizarTexto = (texto) => {
   if (!texto) return "";
   return texto
@@ -16,11 +17,17 @@ const padronizarTexto = (texto) => {
     .toLowerCase();
 };
 
+// Lê o CSV e extrai apenas a coluna Título Original
 async function carregarArtigos(caminhoCsv) {
   const titulos = new Set();
-
   let conteudo = fs.readFileSync(caminhoCsv, "utf8");
-  conteudo = conteudo.replace(/^([,\s]*\r?\n)+/, "");
+
+  // Remove a primeira linha descritiva para alinhar os cabeçalhos corretamente
+  const linhas = conteudo.split(/\r?\n/);
+  if (linhas.length > 0 && linhas[0].includes("ARTIGOS ACEITOS")) {
+    linhas.shift();
+  }
+  conteudo = linhas.join("\n");
 
   return new Promise((resolve, reject) => {
     Readable.from(conteudo)
@@ -30,8 +37,8 @@ async function carregarArtigos(caminhoCsv) {
         }),
       )
       .on("data", (artigo) => {
-        const tituloBruto =
-          artigo["Título Original"] || Object.values(artigo)[0];
+        // Captura apenas o título
+        const tituloBruto = artigo["Título Original"];
 
         if (tituloBruto) {
           titulos.add(padronizarTexto(tituloBruto));
@@ -42,6 +49,7 @@ async function carregarArtigos(caminhoCsv) {
   });
 }
 
+// Automação principal
 async function rodarSelecaoEmLote() {
   console.log("Lendo arquivo de artigos aceitos...");
   const titulosAceitos = await carregarArtigos(
@@ -49,6 +57,7 @@ async function rodarSelecaoEmLote() {
   );
   console.log(`Artigos carregados na memória: ${titulosAceitos.size}`);
 
+  // Inicia o navegador
   const browser = await puppeteer.launch({
     headless: false,
     defaultViewport: null,
@@ -60,6 +69,7 @@ async function rodarSelecaoEmLote() {
   console.log("Fazendo login...");
   await page.goto("https://parsif.al/login/");
 
+  // Preenche credenciais
   await page.type("#id_username", process.env.EMAIL);
   await page.type("#id_password", process.env.SENHA);
 
@@ -71,6 +81,7 @@ async function rodarSelecaoEmLote() {
   console.log("Acessando seleção de estudos...");
   await page.goto(process.env.URL_PROJETO);
 
+  // Aguarda a tabela carregar
   try {
     await page.waitForSelector("table tbody tr", { timeout: 10000 });
   } catch (error) {
@@ -118,6 +129,7 @@ async function rodarSelecaoEmLote() {
 
   const titulosArray = Array.from(titulosAceitos);
 
+  // Marca os checkboxes dos artigos encontrados
   const marcados = await page.evaluate((titulosParaMarcar) => {
     const padronizar = (t) => {
       if (!t) return "";
@@ -140,7 +152,7 @@ async function rodarSelecaoEmLote() {
       const colunas = linha.querySelectorAll("td");
       if (colunas.length < 3) return;
 
-      // A 3ª coluna da tabela armazena os títulos
+      // A 3ª coluna da tabela armazena os títulos no Parsifal
       const tituloOriginal = colunas[2].innerText;
       const tituloPadronizado = padronizar(tituloOriginal);
 
@@ -165,7 +177,6 @@ async function rodarSelecaoEmLote() {
   console.log(
     "O navegador permanecerá aberto. Pode encerrar o terminal (Ctrl+C) quando finalizar.",
   );
-
 }
 
 rodarSelecaoEmLote();
